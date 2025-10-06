@@ -5,74 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🎁 红包抽奖 🎁 🎁 祝您好运 🎁</title>
 
-<!-- Firebase -->
+<!-- Firebase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-firestore-compat.js"></script>
 
 <style>
 :root{--bg:#0b1222;--card:#0f172a;--text:#e5e7eb;--muted:#94a3b8;--primary:#22d3ee;--ok:#34d399;--warn:#fbbf24}
 *{box-sizing:border-box}
-html,body{
-  margin:0;height:100%;
-  background:linear-gradient(180deg,#0b1222,#0f172a);
-  color:var(--text);
-  font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;
-  overflow-x:hidden;
-}
+html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a);
+  color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;overflow-x:hidden;}
 .wrap{max-width:1000px;margin:36px auto;padding:0 16px;text-align:center;}
-.title{
-  text-align:center;
-  font-weight:800;
-  font-size:30px;
-  line-height:1.5;
-  color:#f1f5f9;
-  text-shadow:0 0 15px rgba(34,211,238,.7),0 0 30px rgba(34,211,238,.3);
-  letter-spacing:1px;
-  margin-bottom:10px;
-}
-.card{
-  background:rgba(17,24,39,.88);
-  border:1px solid #1f2937;
-  border-radius:20px;
-  padding:18px;
-  box-shadow:0 10px 30px #0006;
-  text-align:center;
-  margin-top:20px;
-}
-.btn{
-  cursor:pointer;
-  border:1px solid #1f2937;
-  color:#0b1222;
-  background:var(--primary);
-  border-radius:14px;
-  padding:10px 14px;
-  font-weight:800;
-  margin:6px;
-}
+.title{font-weight:800;font-size:30px;line-height:1.5;color:#f1f5f9;
+  text-shadow:0 0 15px rgba(34,211,238,.7),0 0 30px rgba(34,211,238,.3);letter-spacing:1px;margin-bottom:10px;}
+.card{background:rgba(17,24,39,.88);border:1px solid #1f2937;border-radius:20px;
+  padding:18px;box-shadow:0 10px 30px #0006;text-align:center;margin-top:20px;}
+.btn{cursor:pointer;border:1px solid #1f2937;color:#0b1222;background:var(--primary);
+  border-radius:14px;padding:10px 14px;font-weight:800;margin:6px}
 .btn.ok{background:var(--ok);color:#062b1e}
 .btn.warn{background:var(--warn);color:#3b2900}
 .btn.secondary{background:#1f2937;color:var(--text)}
 .btn.ghost{background:transparent;color:var(--muted);border-color:#243041}
 .amount{font-size:56px;font-weight:900;letter-spacing:1px}
 .hint{font-size:12px;color:var(--muted)}
-.firework{
-  position:fixed;left:50%;top:50%;
-  width:6px;height:6px;border-radius:50%;
-  background:#fff;pointer-events:none;
-  animation:boom 1s ease-out forwards;
-}
-@keyframes boom{
-  from{opacity:1;transform:scale(1) translate(0,0);}
-  to{opacity:0;transform:scale(2) translate(var(--x),var(--y));}
-}
+.firework{position:fixed;left:50%;top:50%;width:6px;height:6px;border-radius:50%;
+  background:#fff;pointer-events:none;animation:boom 1s ease-out forwards;}
+@keyframes boom{from{opacity:1;transform:scale(1) translate(0,0);}to{opacity:0;transform:scale(2) translate(var(--x),var(--y));}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="title">
-    🎁 红包抽奖 🎁<br>
-    🎁 祝您好运 🎁
-  </div>
+  <div class="title">🎁 红包抽奖 🎁<br>🎁 祝您好运 🎁</div>
   <div class="hint" id="userHint"></div>
 
   <div class="card">
@@ -99,7 +61,7 @@ html,body{
 </div>
 
 <script>
-/* ---------- Firebase 初始化 ---------- */
+/* ---------- Firebase ---------- */
 const firebaseConfig = {
   apiKey: "AIzaSyBqiysQdJzUMfn-zwzeEu8hhU0T51OKGGA",
   authDomain: "redpacket-lottery.firebaseapp.com",
@@ -112,19 +74,19 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-/* ---------- 配置 ---------- */
-const RATE = 7.2;
+/* ---------- 配置（全部 USDT） ---------- */
+const RATE = 7.2; // 1 USDT = 7.2 CNY（仅用于从人民币换算初始总额）
 const ADMIN_PASSWORD = "happy888999";
 const PRESETS = [
-  { name: "第 1 轮", total: 500 / RATE, count: 3, min: 1.8 },
-  { name: "第 2 轮", total: 1000 / RATE, count: 70, min: 1.8 },
+  { name: "第 1 轮", total: 500 / RATE,  count: 3,   min: 1.8 },
+  { name: "第 2 轮", total: 1000 / RATE, count: 70,  min: 1.8 },
   { name: "第 3 轮", total: 1000 / RATE, count: 100, min: 1.8 }
 ];
 const CURRENCY = "USDT";
 
 let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false;
 
-/* ---------- 用户ID绑定 ---------- */
+/* ---------- 绑定本地ID ---------- */
 let userID = localStorage.getItem("lottery_user_id");
 if (!userID) {
   userID = prompt("请输入您的6位数字ID（仅可设置一次）：");
@@ -143,8 +105,11 @@ async function syncLoad(){
   const ref = db.collection("lottery").doc("roundState");
   const snap = await ref.get();
   if(!snap.exists){
-    await ref.set({roundIndex:0, pool:shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)),
-      history:[], userDraws:{}, roundLocked:false});
+    await ref.set({
+      roundIndex:0,
+      pool: shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)),
+      history:[], userDraws:{}, roundLocked:false
+    });
     return syncLoad();
   }
   const d = snap.data();
@@ -155,7 +120,7 @@ async function syncSave(){
   await db.collection("lottery").doc("roundState").set({roundIndex,pool,history,userDraws,roundLocked});
 }
 
-/* ---------- 随机红包 ---------- */
+/* ---------- 工具 ---------- */
 function randomRedPackets(total, count, min){
   const result=[];let remain=total;
   for(let i=0;i<count-1;i++){
@@ -167,15 +132,19 @@ function randomRedPackets(total, count, min){
 }
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
-/* ---------- 抽奖 ---------- */
+/* ---------- 抽奖（按轮次设备锁） ---------- */
 async function drawOne(){
-  if (localStorage.getItem("lottery_device_locked") === "true") {
-    alert("⚠️ 您已抽过奖，不能再次参与。");
+  // 设备锁：只锁本轮
+  const lastRound = localStorage.getItem("lottery_last_draw_round");
+  if (lastRound !== null && Number(lastRound) === roundIndex) {
+    alert("⚠️ 您本轮已抽过奖，下一轮再来哦。");
     return;
   }
+
   if(roundLocked){alert("当前轮未开放，请等待管理员开启下一轮。");return;}
   if(pool.length===0){alert("本轮红包已抽完！");return;}
 
+  // 云端用户状态
   if(!userDraws[userID]) userDraws[userID]={count:0,locked:false,0:false,1:false,2:false};
   if(userDraws[userID].locked || userDraws[userID].count>=3){
     alert("⚠️ 您已抽过奖，不能再次参与。");
@@ -186,6 +155,7 @@ async function drawOne(){
     return;
   }
 
+  // 发放
   const v=pool.shift();
   userDraws[userID][roundIndex]=true;
   userDraws[userID].count+=1;
@@ -193,10 +163,12 @@ async function drawOne(){
 
   const record={id:userID,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
   history.unshift(record);
-  showFireworks();
+
   alert(`🎉 恭喜 ${userID} 获得 ${v.toFixed(2)} ${CURRENCY}，请联系助理领取！`);
   document.querySelector("#amountView").textContent=`${v.toFixed(2)} ${CURRENCY}`;
-  localStorage.setItem("lottery_device_locked","true");
+
+  // 写入“本轮设备锁”
+  localStorage.setItem("lottery_last_draw_round", String(roundIndex));
 
   if(pool.length===0){roundLocked=true;alert(`${PRESETS[roundIndex].name} 已抽完，请管理员开启下一轮。`);}
   await syncSave();render();
@@ -222,19 +194,21 @@ async function resetAll(){
   roundIndex=0;history=[];roundLocked=false;
   pool=shuffle(randomRedPackets(PRESETS[0].total,PRESETS[0].count,PRESETS[0].min));
   await syncSave();
+  // 清理本地“本轮设备锁”
+  localStorage.removeItem('lottery_last_draw_round');
   alert("✅ 已重置至第一轮。");render();
 }
 
-/* ---------- 渲染 ---------- */
-function showFireworks(){
-  for(let i=0;i<25;i++){
-    const f=document.createElement('div');f.className='firework';
-    f.style.setProperty('--x',`${(Math.random()-0.5)*400}px`);
-    f.style.setProperty('--y',`${(Math.random()-0.5)*400}px`);
-    f.style.background=`hsl(${Math.random()*360},100%,70%)`;
-    document.body.appendChild(f);setTimeout(()=>f.remove(),1000);
-  }
+/* ---------- 导出 ---------- */
+function exportCSV(){
+  if(history.length===0){alert("暂无记录");return;}
+  const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${h.v.toFixed(2)} ${CURRENCY}`])];
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();
 }
+
+/* ---------- 渲染 ---------- */
 function render(){
   const p=PRESETS[roundIndex];
   document.querySelector("#roundInfo").textContent=`当前：${p.name}`;
@@ -243,12 +217,12 @@ function render(){
   document.querySelector("#logBody").innerHTML=history.map(h=>`<tr><td>${h.id}</td><td>${h.round}</td><td>${h.t}</td><td style='text-align:right'>${h.v.toFixed(2)} ${CURRENCY}</td></tr>`).join("");
 }
 
-/* ---------- 初始化 ---------- */
+/* ---------- 事件绑定 & 初始化 ---------- */
 function bind(el,fn){el.addEventListener("click",fn);el.addEventListener("touchstart",fn);}
 bind(document.querySelector("#draw"),drawOne);
 bind(document.querySelector("#next"),nextRound);
 bind(document.querySelector("#reset"),resetAll);
-bind(document.querySelector("#export"),()=>{if(history.length===0){alert("暂无记录");return;}const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${h.v.toFixed(2)} ${CURRENCY}`])];const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();});
+bind(document.querySelector("#export"),exportCSV);
 syncLoad();
 </script>
 </body>
