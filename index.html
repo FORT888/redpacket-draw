@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🎁 红包抽奖（云端限制版）</title>
+<title>🎁 红包抽奖（终极防重复版）</title>
 
-<!-- ✅ 使用国内可访问的 Firebase CDN -->
+<!-- ✅ 国内可访问的 Firebase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-firestore-compat.js"></script>
 
@@ -34,7 +34,7 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
 </head>
 <body>
 <div class="wrap">
-  <div class="title">🎁 红包抽奖（云端限制版）</div>
+  <div class="title">🎁 红包抽奖（终极防重复版）</div>
   <div class="hint" id="userHint"></div>
   <div class="card" style="margin-top:20px">
     <div id="roundInfo">当前：—</div>
@@ -86,7 +86,7 @@ const CURRENCY = "¥";
 
 let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false;
 
-/* ---------- 本地唯一 ID ---------- */
+/* ---------- 本地绑定 ID ---------- */
 let userID = localStorage.getItem("lottery_user_id");
 if (!userID) {
   userID = prompt("请输入您的6位数字ID（仅能设置一次）：");
@@ -100,7 +100,7 @@ if (!userID) {
 }
 document.getElementById("userHint").textContent = `您的ID：${userID}（不可修改）`;
 
-/* ---------- Firestore ---------- */
+/* ---------- Firestore 同步 ---------- */
 async function syncLoad(){
   const ref = db.collection("lottery").doc("roundState");
   const snap = await ref.get();
@@ -129,46 +129,56 @@ function randomRedPackets(total, count, min){
 }
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
-/* ---------- 抽奖逻辑 ---------- */
+/* ---------- 抽奖 ---------- */
 async function drawOne(){
+  // 本地设备锁检测
+  if (localStorage.getItem("lottery_device_locked") === "true") {
+    alert("⚠️ 您已抽过奖，不能再次参与。");
+    return;
+  }
+
   if(roundLocked){alert("当前轮未开放，请等待管理员开启下一轮。");return;}
   if(pool.length===0){alert("本轮红包已抽完！");return;}
 
-  // 初始化用户数据
-  if(!userDraws[userID]) userDraws[userID]={count:0, 0:false, 1:false, 2:false};
+  // 初始化用户云端数据
+  if(!userDraws[userID]) {
+    userDraws[userID] = { count: 0, locked: false, 0: false, 1: false, 2: false };
+  }
 
-  // 检查总抽奖次数限制
-  if(userDraws[userID].count >= 3){
-    alert("⚠️ 该ID已达到总抽奖上限（3次），不能再抽啦。");
+  // 云端ID锁检测
+  if(userDraws[userID].locked || userDraws[userID].count >= 3){
+    alert("⚠️ 您已抽过奖，不能再次参与。");
     return;
   }
 
-  // 检查本轮是否已抽
+  // 当前轮检测
   if(userDraws[userID][roundIndex]){
-    alert("您本轮已经抽过红包！");
+    alert("⚠️ 您本轮已经抽过红包！");
     return;
   }
 
-  // 抽奖
-  const v=pool.shift();
-  userDraws[userID][roundIndex]=true;
+  // 抽奖逻辑
+  const v = pool.shift();
+  userDraws[userID][roundIndex] = true;
   userDraws[userID].count += 1;
+  if(userDraws[userID].count >= 3) userDraws[userID].locked = true;
 
-  const record={id:userID,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
+  const record = { id:userID, round:PRESETS[roundIndex].name, t:new Date().toLocaleString(), v };
   history.unshift(record);
   showFireworks();
   alert(`🎉 恭喜 ${userID} 获得 ${CURRENCY}${v.toFixed(2)}！`);
-  document.querySelector("#amountView").textContent=`${CURRENCY}${v.toFixed(2)}`;
+  document.querySelector("#amountView").textContent = `${CURRENCY}${v.toFixed(2)}`;
+
+  // 本地锁定设备
+  localStorage.setItem("lottery_device_locked", "true");
 
   if(pool.length===0){roundLocked=true;alert(`${PRESETS[roundIndex].name} 已抽完，请管理员开启下一轮。`);}
-
-  await syncSave();
-  render();
+  await syncSave();render();
 }
 
-/* ---------- 管理员操作 ---------- */
+/* ---------- 管理员功能 ---------- */
 async function nextRound(){
-  const pwd=prompt("请输入管理员密码以开启下一轮：");
+  const pwd=prompt("请输入管理员密码：");
   if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
   if(roundIndex>=PRESETS.length-1){alert("已经是最后一轮！");return;}
   roundIndex++;
@@ -180,7 +190,7 @@ async function nextRound(){
   render();
 }
 async function resetAll(){
-  const pwd=prompt("请输入管理员密码以确认重置：");
+  const pwd=prompt("请输入管理员密码以重置：");
   if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
   if(!confirm("确定要重置所有记录吗？"))return;
   roundIndex=0;history=[];roundLocked=false;
@@ -189,7 +199,7 @@ async function resetAll(){
   alert("✅ 已重置至第一轮。");render();
 }
 
-/* ---------- 导出记录 ---------- */
+/* ---------- 导出 ---------- */
 function exportCSV(){
   if(history.length===0){alert("暂无记录");return;}
   const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${CURRENCY}${h.v.toFixed(2)}`])];
@@ -198,15 +208,14 @@ function exportCSV(){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();
 }
 
-/* ---------- 视觉效果 ---------- */
+/* ---------- 动画 + 渲染 ---------- */
 function showFireworks(){
   for(let i=0;i<25;i++){
     const f=document.createElement('div');f.className='firework';
     f.style.setProperty('--x',`${(Math.random()-0.5)*400}px`);
     f.style.setProperty('--y',`${(Math.random()-0.5)*400}px`);
     f.style.background=`hsl(${Math.random()*360},100%,70%)`;
-    document.body.appendChild(f);
-    setTimeout(()=>f.remove(),1000);
+    document.body.appendChild(f);setTimeout(()=>f.remove(),1000);
   }
 }
 function render(){
@@ -227,4 +236,5 @@ syncLoad();
 </script>
 </body>
 </html>
+
 
