@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>三轮红包抽奖（Firebase 同步版 - 国内兼容）</title>
+<title>🎁 红包抽奖（云端限制版）</title>
 
 <!-- ✅ 使用国内可访问的 Firebase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-app-compat.js"></script>
@@ -34,7 +34,8 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
 </head>
 <body>
 <div class="wrap">
-  <div class="title">🎁 三轮红包抽奖（云端同步版）</div>
+  <div class="title">🎁 红包抽奖（云端限制版）</div>
+  <div class="hint" id="userHint"></div>
   <div class="card" style="margin-top:20px">
     <div id="roundInfo">当前：—</div>
     <div id="statusInfo" class="hint">状态：未开始</div>
@@ -62,24 +63,17 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
 
 <script>
 /* ---------- Firebase 初始化 ---------- */
-try {
-  const firebaseConfig = {
-    apiKey: "AIzaSyBqiysQdJzUMfn-zwzeEu8hhU0T51OKGGA",
-    authDomain: "redpacket-lottery.firebaseapp.com",
-    projectId: "redpacket-lottery",
-    storageBucket: "redpacket-lottery.appspot.com",
-    messagingSenderId: "252110350053",
-    appId: "1:252110350053:web:60b394678bb8910ae6560c",
-    measurementId: "G-5MXFC392RP"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  var db = firebase.firestore();
-  console.log("✅ Firebase 已初始化");
-} catch (e) {
-  alert("❌ Firebase 连接失败，请检查网络或防火墙设置。");
-  console.error(e);
-}
+const firebaseConfig = {
+  apiKey: "AIzaSyBqiysQdJzUMfn-zwzeEu8hhU0T51OKGGA",
+  authDomain: "redpacket-lottery.firebaseapp.com",
+  projectId: "redpacket-lottery",
+  storageBucket: "redpacket-lottery.appspot.com",
+  messagingSenderId: "252110350053",
+  appId: "1:252110350053:web:60b394678bb8910ae6560c",
+  measurementId: "G-5MXFC392RP"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 /* ---------- 配置 ---------- */
 const ADMIN_PASSWORD = "happy888999";
@@ -92,18 +86,38 @@ const CURRENCY = "¥";
 
 let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false;
 
-const els = {
-  draw: document.querySelector("#draw"),
-  export: document.querySelector("#export"),
-  reset: document.querySelector("#reset"),
-  next: document.querySelector("#next"),
-  amountView: document.querySelector("#amountView"),
-  logBody: document.querySelector("#logBody"),
-  roundInfo: document.querySelector("#roundInfo"),
-  statusInfo: document.querySelector("#statusInfo"),
-  leftInfo: document.querySelector("#leftInfo")
-};
+/* ---------- 本地唯一 ID ---------- */
+let userID = localStorage.getItem("lottery_user_id");
+if (!userID) {
+  userID = prompt("请输入您的6位数字ID（仅能设置一次）：");
+  if(!/^[0-9]{6}$/.test(userID)) {
+    alert("❌ ID格式错误，请刷新页面重新输入6位数字。");
+    location.reload();
+  } else {
+    localStorage.setItem("lottery_user_id", userID);
+    alert("✅ 您的ID已绑定：" + userID + "。此后不可更改。");
+  }
+}
+document.getElementById("userHint").textContent = `您的ID：${userID}（不可修改）`;
 
+/* ---------- Firestore ---------- */
+async function syncLoad(){
+  const ref = db.collection("lottery").doc("roundState");
+  const snap = await ref.get();
+  if(!snap.exists){
+    await ref.set({roundIndex:0, pool:shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)), 
+      history:[], userDraws:{}, roundLocked:false});
+    return syncLoad();
+  }
+  const d = snap.data();
+  roundIndex = d.roundIndex; pool = d.pool; history = d.history; userDraws = d.userDraws; roundLocked = d.roundLocked;
+  render();
+}
+async function syncSave(){
+  await db.collection("lottery").doc("roundState").set({roundIndex,pool,history,userDraws,roundLocked});
+}
+
+/* ---------- 工具 ---------- */
 function randomRedPackets(total, count, min){
   const result=[];let remain=total;
   for(let i=0;i<count-1;i++){
@@ -115,79 +129,67 @@ function randomRedPackets(total, count, min){
 }
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
-/* ---------- Firestore 同步 ---------- */
-async function syncLoad(){
-  try {
-    const ref = db.collection("lottery").doc("roundState");
-    const snap = await ref.get();
-    if(!snap.exists){
-      await ref.set({roundIndex:0, pool: shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)), 
-        history:[], userDraws:{}, roundLocked:false});
-      return syncLoad();
-    }
-    const d = snap.data();
-    roundIndex = d.roundIndex; pool = d.pool; history = d.history; userDraws = d.userDraws; roundLocked = d.roundLocked;
-    render();
-  } catch (err) {
-    alert("⚠️ 无法加载数据库，请检查网络或 Firestore 规则。");
-    console.error(err);
-  }
-}
-
-async function syncSave(){
-  try {
-    await db.collection("lottery").doc("roundState").set({roundIndex,pool,history,userDraws,roundLocked});
-  } catch (e) {
-    alert("⚠️ 数据保存失败，请重试。");
-    console.error(e);
-  }
-}
-
-/* ---------- 抽奖 ---------- */
+/* ---------- 抽奖逻辑 ---------- */
 async function drawOne(){
   if(roundLocked){alert("当前轮未开放，请等待管理员开启下一轮。");return;}
   if(pool.length===0){alert("本轮红包已抽完！");return;}
-  const id=prompt("请输入您的6位数字ID：");
-  if(!/^[0-9]{6}$/.test(id)){alert("请输入正确的6位数字ID！");return;}
-  if(!userDraws[id])userDraws[id]={0:false,1:false,2:false};
-  if(userDraws[id][roundIndex]){alert("您本轮已经抽过红包，下一轮再来吧！");return;}
+
+  // 初始化用户数据
+  if(!userDraws[userID]) userDraws[userID]={count:0, 0:false, 1:false, 2:false};
+
+  // 检查总抽奖次数限制
+  if(userDraws[userID].count >= 3){
+    alert("⚠️ 该ID已达到总抽奖上限（3次），不能再抽啦。");
+    return;
+  }
+
+  // 检查本轮是否已抽
+  if(userDraws[userID][roundIndex]){
+    alert("您本轮已经抽过红包！");
+    return;
+  }
+
+  // 抽奖
   const v=pool.shift();
-  userDraws[id][roundIndex]=true;
-  const record={id,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
+  userDraws[userID][roundIndex]=true;
+  userDraws[userID].count += 1;
+
+  const record={id:userID,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
   history.unshift(record);
   showFireworks();
-  alert(`🎉 恭喜获得 ${CURRENCY}${v.toFixed(2)}！`);
-  els.amountView.textContent=`${CURRENCY}${v.toFixed(2)}`;
+  alert(`🎉 恭喜 ${userID} 获得 ${CURRENCY}${v.toFixed(2)}！`);
+  document.querySelector("#amountView").textContent=`${CURRENCY}${v.toFixed(2)}`;
+
   if(pool.length===0){roundLocked=true;alert(`${PRESETS[roundIndex].name} 已抽完，请管理员开启下一轮。`);}
-  await syncSave();render();
+
+  await syncSave();
+  render();
 }
 
-/* ---------- 下一轮 ---------- */
+/* ---------- 管理员操作 ---------- */
 async function nextRound(){
   const pwd=prompt("请输入管理员密码以开启下一轮：");
-  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误，无法开启下一轮。");return;}
+  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
   if(roundIndex>=PRESETS.length-1){alert("已经是最后一轮！");return;}
-  roundIndex+=1;
+  roundIndex++;
   const p=PRESETS[roundIndex];
   pool=shuffle(randomRedPackets(p.total,p.count,p.min));
   roundLocked=false;
   await syncSave();
-  alert(`${PRESETS[roundIndex].name} 已开始！`);
+  alert(`${p.name} 已开始！`);
   render();
 }
-
-/* ---------- 重置 ---------- */
 async function resetAll(){
   const pwd=prompt("请输入管理员密码以确认重置：");
-  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误，无法重置。");return;}
+  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
   if(!confirm("确定要重置所有记录吗？"))return;
-  roundIndex=0;history=[];userDraws={};roundLocked=false;
+  roundIndex=0;history=[];roundLocked=false;
   pool=shuffle(randomRedPackets(PRESETS[0].total,PRESETS[0].count,PRESETS[0].min));
   await syncSave();
-  alert("✅ 已重置，回到第一轮。");render();
+  alert("✅ 已重置至第一轮。");render();
 }
 
-/* ---------- 导出 ---------- */
+/* ---------- 导出记录 ---------- */
 function exportCSV(){
   if(history.length===0){alert("暂无记录");return;}
   const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${CURRENCY}${h.v.toFixed(2)}`])];
@@ -196,27 +198,31 @@ function exportCSV(){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();
 }
 
-/* ---------- 其他 ---------- */
-function showFireworks(){for(let i=0;i<25;i++){const f=document.createElement('div');f.className='firework';
-f.style.setProperty('--x',`${(Math.random()-0.5)*400}px`);f.style.setProperty('--y',`${(Math.random()-0.5)*400}px`);
-f.style.background=`hsl(${Math.random()*360},100%,70%)`;document.body.appendChild(f);setTimeout(()=>f.remove(),1000);}}
+/* ---------- 视觉效果 ---------- */
+function showFireworks(){
+  for(let i=0;i<25;i++){
+    const f=document.createElement('div');f.className='firework';
+    f.style.setProperty('--x',`${(Math.random()-0.5)*400}px`);
+    f.style.setProperty('--y',`${(Math.random()-0.5)*400}px`);
+    f.style.background=`hsl(${Math.random()*360},100%,70%)`;
+    document.body.appendChild(f);
+    setTimeout(()=>f.remove(),1000);
+  }
+}
 function render(){
   const p=PRESETS[roundIndex];
-  els.roundInfo.textContent=`当前：${p.name}（总额 ${CURRENCY}${p.total} / ${p.count} 包）`;
-  els.leftInfo.textContent=`剩余：${pool.length} 包`;
-  els.statusInfo.textContent=`状态：${roundLocked?"未开放":"进行中"}`;
-  els.logBody.innerHTML=history.map(h=>`<tr><td>${h.id}</td><td>${h.round}</td><td>${h.t}</td><td style='text-align:right'>${CURRENCY}${h.v.toFixed(2)}</td></tr>`).join("");
+  document.querySelector("#roundInfo").textContent=`当前：${p.name}（总额 ${CURRENCY}${p.total} / ${p.count} 包）`;
+  document.querySelector("#leftInfo").textContent=`剩余：${pool.length} 包`;
+  document.querySelector("#statusInfo").textContent=`状态：${roundLocked?"未开放":"进行中"}`;
+  document.querySelector("#logBody").innerHTML=history.map(h=>`<tr><td>${h.id}</td><td>${h.round}</td><td>${h.t}</td><td style='text-align:right'>${CURRENCY}${h.v.toFixed(2)}</td></tr>`).join("");
 }
 
 /* ---------- 初始化 ---------- */
-function bindClick(el, handler){
-  el.addEventListener("click", handler);
-  el.addEventListener("touchstart", handler);
-}
-bindClick(els.draw, drawOne);
-bindClick(els.next, nextRound);
-bindClick(els.reset, resetAll);
-bindClick(els.export, exportCSV);
+function bind(el, fn){el.addEventListener("click",fn);el.addEventListener("touchstart",fn);}
+bind(document.querySelector("#draw"),drawOne);
+bind(document.querySelector("#next"),nextRound);
+bind(document.querySelector("#reset"),resetAll);
+bind(document.querySelector("#export"),exportCSV);
 syncLoad();
 </script>
 </body>
