@@ -75,7 +75,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* ---------- 配置（全部 USDT） ---------- */
-const RATE = 7.2; // 1 USDT = 7.2 CNY（仅用于从人民币换算初始总额）
+const RATE = 7.2; 
 const ADMIN_PASSWORD = "happy888999";
 const PRESETS = [
   { name: "第 1 轮", total: 500 / RATE,  count: 3,   min: 1.8 },
@@ -86,7 +86,7 @@ const CURRENCY = "USDT";
 
 let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false;
 
-/* ---------- 绑定本地ID ---------- */
+/* ---------- 用户ID ---------- */
 let userID = localStorage.getItem("lottery_user_id");
 if (!userID) {
   userID = prompt("请输入您的6位数字ID（仅可设置一次）：");
@@ -104,7 +104,9 @@ document.getElementById("userHint").textContent = `您的ID：${userID}（不可
 async function syncLoad(){
   const ref = db.collection("lottery").doc("roundState");
   const snap = await ref.get();
+
   if(!snap.exists){
+    // 若无记录 → 创建并从第1轮开始
     await ref.set({
       roundIndex:0,
       pool: shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)),
@@ -112,15 +114,22 @@ async function syncLoad(){
     });
     return syncLoad();
   }
+
   const d = snap.data();
-  roundIndex = d.roundIndex; pool = d.pool; history = d.history; userDraws = d.userDraws; roundLocked = d.roundLocked;
+  // ✅ 强制重置为第1轮
+  roundIndex = 0;
+  pool = shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min));
+  history = [];
+  userDraws = {};
+  roundLocked = false;
+  await syncSave();
   render();
 }
 async function syncSave(){
   await db.collection("lottery").doc("roundState").set({roundIndex,pool,history,userDraws,roundLocked});
 }
 
-/* ---------- 工具 ---------- */
+/* ---------- 随机红包 ---------- */
 function randomRedPackets(total, count, min){
   const result=[];let remain=total;
   for(let i=0;i<count-1;i++){
@@ -132,9 +141,8 @@ function randomRedPackets(total, count, min){
 }
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
-/* ---------- 抽奖（按轮次设备锁） ---------- */
+/* ---------- 抽奖 ---------- */
 async function drawOne(){
-  // 设备锁：只锁本轮
   const lastRound = localStorage.getItem("lottery_last_draw_round");
   if (lastRound !== null && Number(lastRound) === roundIndex) {
     alert("⚠️ 您本轮已抽过奖，下一轮再来哦。");
@@ -144,7 +152,6 @@ async function drawOne(){
   if(roundLocked){alert("当前轮未开放，请等待管理员开启下一轮。");return;}
   if(pool.length===0){alert("本轮红包已抽完！");return;}
 
-  // 云端用户状态
   if(!userDraws[userID]) userDraws[userID]={count:0,locked:false,0:false,1:false,2:false};
   if(userDraws[userID].locked || userDraws[userID].count>=3){
     alert("⚠️ 您已抽过奖，不能再次参与。");
@@ -155,7 +162,6 @@ async function drawOne(){
     return;
   }
 
-  // 发放
   const v=pool.shift();
   userDraws[userID][roundIndex]=true;
   userDraws[userID].count+=1;
@@ -163,11 +169,8 @@ async function drawOne(){
 
   const record={id:userID,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
   history.unshift(record);
-
   alert(`🎉 恭喜 ${userID} 获得 ${v.toFixed(2)} ${CURRENCY}，请联系助理领取！`);
   document.querySelector("#amountView").textContent=`${v.toFixed(2)} ${CURRENCY}`;
-
-  // 写入“本轮设备锁”
   localStorage.setItem("lottery_last_draw_round", String(roundIndex));
 
   if(pool.length===0){roundLocked=true;alert(`${PRESETS[roundIndex].name} 已抽完，请管理员开启下一轮。`);}
@@ -186,17 +189,6 @@ async function nextRound(){
   await syncSave();
   alert(`${p.name} 已开始！`);
   render();
-}
-async function resetAll(){
-  const pwd=prompt("请输入管理员密码以重置：");
-  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
-  if(!confirm("确定要重置所有记录吗？"))return;
-  roundIndex=0;history=[];roundLocked=false;
-  pool=shuffle(randomRedPackets(PRESETS[0].total,PRESETS[0].count,PRESETS[0].min));
-  await syncSave();
-  // 清理本地“本轮设备锁”
-  localStorage.removeItem('lottery_last_draw_round');
-  alert("✅ 已重置至第一轮。");render();
 }
 
 /* ---------- 导出 ---------- */
@@ -217,13 +209,13 @@ function render(){
   document.querySelector("#logBody").innerHTML=history.map(h=>`<tr><td>${h.id}</td><td>${h.round}</td><td>${h.t}</td><td style='text-align:right'>${h.v.toFixed(2)} ${CURRENCY}</td></tr>`).join("");
 }
 
-/* ---------- 事件绑定 & 初始化 ---------- */
+/* ---------- 初始化 ---------- */
 function bind(el,fn){el.addEventListener("click",fn);el.addEventListener("touchstart",fn);}
 bind(document.querySelector("#draw"),drawOne);
 bind(document.querySelector("#next"),nextRound);
-bind(document.querySelector("#reset"),resetAll);
 bind(document.querySelector("#export"),exportCSV);
 syncLoad();
 </script>
 </body>
 </html>
+
