@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🎁 红包抽奖 🎁 祝您好运 🎁</title>
+<title>🎁 红包抽奖 🎁 🎁 祝您好运 🎁</title>
 
 <!-- Firebase -->
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-app-compat.js"></script>
@@ -12,32 +12,70 @@
 <style>
 :root{--bg:#0b1222;--card:#0f172a;--text:#e5e7eb;--muted:#94a3b8;--primary:#22d3ee;--ok:#34d399;--warn:#fbbf24}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a);
-  color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;overflow-x:hidden;}
-.wrap{max-width:1000px;margin:36px auto;padding:0 16px}
-.title{text-align:center;font-weight:800;font-size:28px;line-height:1.6;color:#e2e8f0;text-shadow:0 0 10px #22d3ee80;}
-.card{background:rgba(17,24,39,.88);border:1px solid #1f2937;border-radius:20px;
-  padding:18px;box-shadow:0 10px 30px #0006;text-align:center}
-.btn{cursor:pointer;border:1px solid #1f2937;color:#0b1222;background:var(--primary);
-  border-radius:14px;padding:10px 14px;font-weight:800;margin:6px}
+html,body{
+  margin:0;height:100%;
+  background:linear-gradient(180deg,#0b1222,#0f172a);
+  color:var(--text);
+  font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;
+  overflow-x:hidden;
+}
+.wrap{max-width:1000px;margin:36px auto;padding:0 16px;text-align:center;}
+.title{
+  text-align:center;
+  font-weight:800;
+  font-size:30px;
+  line-height:1.5;
+  color:#f1f5f9;
+  text-shadow:0 0 15px rgba(34,211,238,.7),0 0 30px rgba(34,211,238,.3);
+  letter-spacing:1px;
+  margin-bottom:10px;
+}
+.card{
+  background:rgba(17,24,39,.88);
+  border:1px solid #1f2937;
+  border-radius:20px;
+  padding:18px;
+  box-shadow:0 10px 30px #0006;
+  text-align:center;
+  margin-top:20px;
+}
+.btn{
+  cursor:pointer;
+  border:1px solid #1f2937;
+  color:#0b1222;
+  background:var(--primary);
+  border-radius:14px;
+  padding:10px 14px;
+  font-weight:800;
+  margin:6px;
+}
 .btn.ok{background:var(--ok);color:#062b1e}
 .btn.warn{background:var(--warn);color:#3b2900}
 .btn.secondary{background:#1f2937;color:var(--text)}
 .btn.ghost{background:transparent;color:var(--muted);border-color:#243041}
-.disabled{opacity:.55;pointer-events:none}
 .amount{font-size:56px;font-weight:900;letter-spacing:1px}
 .hint{font-size:12px;color:var(--muted)}
-.firework{position:fixed;left:50%;top:50%;width:6px;height:6px;border-radius:50%;
-  background:#fff;pointer-events:none;animation:boom 1s ease-out forwards;}
-@keyframes boom{from{opacity:1;transform:scale(1) translate(0,0);}to{opacity:0;transform:scale(2) translate(var(--x),var(--y));}}
+.firework{
+  position:fixed;left:50%;top:50%;
+  width:6px;height:6px;border-radius:50%;
+  background:#fff;pointer-events:none;
+  animation:boom 1s ease-out forwards;
+}
+@keyframes boom{
+  from{opacity:1;transform:scale(1) translate(0,0);}
+  to{opacity:0;transform:scale(2) translate(var(--x),var(--y));}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="title">🎁 红包抽奖 🎁<br>祝您好运 🎁</div>
+  <div class="title">
+    🎁 红包抽奖 🎁<br>
+    🎁 祝您好运 🎁
+  </div>
   <div class="hint" id="userHint"></div>
 
-  <div class="card" style="margin-top:20px">
+  <div class="card">
     <div id="roundInfo">当前：—</div>
     <div id="statusInfo" class="hint">状态：未开始</div>
     <button class="btn ok" id="draw">抽红包</button>
@@ -51,7 +89,7 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
     <div class="hint" id="leftInfo" style="margin-top:8px"></div>
   </div>
 
-  <div class="card" style="margin-top:20px;text-align:left">
+  <div class="card" style="text-align:left">
     <div class="hint">抽奖记录：</div>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
       <thead><tr><th>ID</th><th>轮次</th><th>时间</th><th style="text-align:right">金额</th></tr></thead>
@@ -164,7 +202,7 @@ async function drawOne(){
   await syncSave();render();
 }
 
-/* ---------- 管理员 ---------- */
+/* ---------- 管理 ---------- */
 async function nextRound(){
   const pwd=prompt("请输入管理员密码：");
   if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
@@ -185,15 +223,6 @@ async function resetAll(){
   pool=shuffle(randomRedPackets(PRESETS[0].total,PRESETS[0].count,PRESETS[0].min));
   await syncSave();
   alert("✅ 已重置至第一轮。");render();
-}
-
-/* ---------- 导出 ---------- */
-function exportCSV(){
-  if(history.length===0){alert("暂无记录");return;}
-  const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${h.v.toFixed(2)} ${CURRENCY}`])];
-  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();
 }
 
 /* ---------- 渲染 ---------- */
@@ -219,9 +248,8 @@ function bind(el,fn){el.addEventListener("click",fn);el.addEventListener("touchs
 bind(document.querySelector("#draw"),drawOne);
 bind(document.querySelector("#next"),nextRound);
 bind(document.querySelector("#reset"),resetAll);
-bind(document.querySelector("#export"),exportCSV);
+bind(document.querySelector("#export"),()=>{if(history.length===0){alert("暂无记录");return;}const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${h.v.toFixed(2)} ${CURRENCY}`])];const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();});
 syncLoad();
 </script>
 </body>
 </html>
-
