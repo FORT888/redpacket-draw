@@ -24,12 +24,8 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
 .btn.ok{background:var(--ok);color:#062b1e}
 .btn.warn{background:var(--warn);color:#3b2900}
 .btn.secondary{background:#1f2937;color:var(--text)}
-.btn.ghost{background:transparent;color:var(--muted);border-color:#243041}
 .amount{font-size:56px;font-weight:900;letter-spacing:1px}
 .hint{font-size:12px;color:var(--muted)}
-.firework{position:fixed;left:50%;top:50%;width:6px;height:6px;border-radius:50%;
-  background:#fff;pointer-events:none;animation:boom 1s ease-out forwards;}
-@keyframes boom{from{opacity:1;transform:scale(1) translate(0,0);}to{opacity:0;transform:scale(2) translate(var(--x),var(--y));}}
 </style>
 </head>
 <body>
@@ -74,8 +70,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-/* ---------- 配置（全部 USDT） ---------- */
-const RATE = 7.2; 
+/* ---------- 配置（USDT） ---------- */
+const RATE = 7.2; // 1 USDT = 7.2 CNY，用于把人民币总额换算成USDT
 const ADMIN_PASSWORD = "happy888999";
 const PRESETS = [
   { name: "第 1 轮", total: 500 / RATE,  count: 3,   min: 1.8 },
@@ -84,9 +80,12 @@ const PRESETS = [
 ];
 const CURRENCY = "USDT";
 
-let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false;
+// 关键：本轮仅允许第一人抽中（全局“已抽过”锁）
+const SINGLE_WINNER_PER_ROUND = true;
 
-/* ---------- 用户ID ---------- */
+let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false, roundFirstDrawn = false;
+
+/* ---------- 绑定本地ID（只展示，不参与全局锁判定） ---------- */
 let userID = localStorage.getItem("lottery_user_id");
 if (!userID) {
   userID = prompt("请输入您的6位数字ID（仅可设置一次）：");
@@ -106,30 +105,32 @@ async function syncLoad(){
   const snap = await ref.get();
 
   if(!snap.exists){
-    // 若无记录 → 创建并从第1轮开始
+    // 初始化：从第1轮开始
     await ref.set({
       roundIndex:0,
       pool: shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)),
-      history:[], userDraws:{}, roundLocked:false
+      history:[], userDraws:{}, roundLocked:false, roundFirstDrawn:false
     });
     return syncLoad();
   }
 
   const d = snap.data();
-  // ✅ 强制重置为第1轮
+  // 强制从第一轮开始
   roundIndex = 0;
   pool = shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min));
   history = [];
   userDraws = {};
   roundLocked = false;
+  roundFirstDrawn = false;
   await syncSave();
   render();
 }
+
 async function syncSave(){
-  await db.collection("lottery").doc("roundState").set({roundIndex,pool,history,userDraws,roundLocked});
+  await db.collection("lottery").doc("roundState").set({roundIndex,pool,history,userDraws,roundLocked,roundFirstDrawn});
 }
 
-/* ---------- 随机红包 ---------- */
+/* ---------- 红包生成 ---------- */
 function randomRedPackets(total, count, min){
   const result=[];let remain=total;
   for(let i=0;i<count-1;i++){
@@ -141,27 +142,21 @@ function randomRedPackets(total, count, min){
 }
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
-/* ---------- 抽奖 ---------- */
+/* ---------- 抽奖（全局“已抽过”锁） ---------- */
 async function drawOne(){
-  const lastRound = localStorage.getItem("lottery_last_draw_round");
-  if (lastRound !== null && Number(lastRound) === roundIndex) {
-    alert("⚠️ 您本轮已抽过奖，下一轮再来哦。");
+  if (SINGLE_WINNER_PER_ROUND && roundFirstDrawn) {
+    alert("⚠️ 已抽过");
     return;
   }
+  if(roundLocked){alert("⚠️ 已抽过");return;} // 保持同一提示
+  if(pool.length===0){alert("⚠️ 已抽过");return;} // 保持同一提示
 
-  if(roundLocked){alert("当前轮未开放，请等待管理员开启下一轮。");return;}
-  if(pool.length===0){alert("本轮红包已抽完！");return;}
-
+  // 云端ID防重复（保留，不影响“已抽过”全局锁）
   if(!userDraws[userID]) userDraws[userID]={count:0,locked:false,0:false,1:false,2:false};
-  if(userDraws[userID].locked || userDraws[userID].count>=3){
-    alert("⚠️ 您已抽过奖，不能再次参与。");
-    return;
-  }
-  if(userDraws[userID][roundIndex]){
-    alert("⚠️ 您本轮已经抽过红包！");
-    return;
-  }
+  if(userDraws[userID].locked || userDraws[userID].count>=3){ alert("⚠️ 已抽过"); return; }
+  if(userDraws[userID][roundIndex]){ alert("⚠️ 已抽过"); return; }
 
+  // 发放
   const v=pool.shift();
   userDraws[userID][roundIndex]=true;
   userDraws[userID].count+=1;
@@ -169,12 +164,19 @@ async function drawOne(){
 
   const record={id:userID,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
   history.unshift(record);
+
   alert(`🎉 恭喜 ${userID} 获得 ${v.toFixed(2)} ${CURRENCY}，请联系助理领取！`);
   document.querySelector("#amountView").textContent=`${v.toFixed(2)} ${CURRENCY}`;
-  localStorage.setItem("lottery_last_draw_round", String(roundIndex));
 
-  if(pool.length===0){roundLocked=true;alert(`${PRESETS[roundIndex].name} 已抽完，请管理员开启下一轮。`);}
-  await syncSave();render();
+  // 关键：首人抽中后，立刻把本轮锁死，所有人都“已抽过”
+  if (SINGLE_WINNER_PER_ROUND) {
+    roundFirstDrawn = true;
+    roundLocked = true;     // UI显示“未开放”
+    pool.length = 0;        // 清空红包池（保险）
+  }
+
+  await syncSave();
+  render();
 }
 
 /* ---------- 管理 ---------- */
@@ -186,9 +188,21 @@ async function nextRound(){
   const p=PRESETS[roundIndex];
   pool=shuffle(randomRedPackets(p.total,p.count,p.min));
   roundLocked=false;
+  roundFirstDrawn=false;
   await syncSave();
   alert(`${p.name} 已开始！`);
   render();
+}
+
+async function resetAll(){
+  const pwd=prompt("请输入管理员密码以重置：");
+  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
+  if(!confirm("确定要重置所有记录吗？"))return;
+  roundIndex=0;
+  pool=shuffle(randomRedPackets(PRESETS[0].total,PRESETS[0].count,PRESETS[0].min));
+  history=[]; userDraws={}; roundLocked=false; roundFirstDrawn=false;
+  await syncSave();
+  alert("✅ 已重置至第一轮。");render();
 }
 
 /* ---------- 导出 ---------- */
@@ -213,9 +227,11 @@ function render(){
 function bind(el,fn){el.addEventListener("click",fn);el.addEventListener("touchstart",fn);}
 bind(document.querySelector("#draw"),drawOne);
 bind(document.querySelector("#next"),nextRound);
+bind(document.querySelector("#reset"),resetAll);
 bind(document.querySelector("#export"),exportCSV);
 syncLoad();
 </script>
 </body>
 </html>
+
 
