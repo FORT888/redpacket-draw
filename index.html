@@ -33,7 +33,7 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
   <div class="hint">无需输入ID，每人限抽一次</div>
 
   <div class="card">
-    <div id="roundInfo">奖池：特等奖 + 现金红包</div>
+    <div id="roundInfo">奖池：特等奖 + 现金红包（共21份）</div>
     <div id="statusInfo" class="hint">状态：进行中</div>
     <button class="btn ok" id="draw">抽红包</button>
     <button class="btn secondary" id="export">导出记录</button>
@@ -70,38 +70,33 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* ---------- 配置 ---------- */
+const ADMIN_PASSWORD = "happy888";
 const CURRENCY = "元";
-const TOTAL_CASH = 3000;
-const CASH_COUNT = 20;
-const CASH_MIN = 38;
-const CASH_MAX = 388;
-const ADMIN_PASSWORD = "admin888"; // 修改为你自己的密码
 
 let pool = [];
 let history = [];
 let userDraws = {};
 let locked = false;
 
-/* ---------- 奖池生成 ---------- */
-function randomCashPackets(total, count, min, max){
-  let remain = total, result = [];
-  for(let i=0;i<count-1;i++){
-    const maxPossible = Math.min(max, remain - min*(count - i - 1));
-    const money = Math.floor(Math.random()*(maxPossible - min + 1)) + min;
-    result.push(money);
-    remain -= money;
-  }
-  result.push(remain);
-  return result;
+/* ---------- 奖池固定金额 ---------- */
+function createFixedPool(){
+  const list = [];
+  for(let i=0;i<5;i++) list.push("38" + CURRENCY);
+  for(let i=0;i<5;i++) list.push("88" + CURRENCY);
+  for(let i=0;i<5;i++) list.push("188" + CURRENCY);
+  for(let i=0;i<5;i++) list.push("288" + CURRENCY);
+  list.push("🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁");
+  return shuffle(list);
 }
 
+/* ---------- 工具 ---------- */
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
 async function init(){
   const ref = db.collection("lottery").doc("roundOne");
   const snap = await ref.get();
   if(!snap.exists){
-    pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX).map(v=>`${v}${CURRENCY}`)]);
+    pool = createFixedPool();
     await ref.set({pool, history:[], userDraws:{}, locked:false});
   }
   ref.onSnapshot(doc=>{
@@ -144,7 +139,7 @@ async function resetLottery(){
   if(pwd !== ADMIN_PASSWORD){alert("❌ 密码错误！");return;}
   if(!confirm("确定要重置奖池并清空记录吗？"))return;
 
-  pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX).map(v=>`${v}${CURRENCY}`)]);
+  pool = createFixedPool();
   history = [];
   userDraws = {};
   locked = false;
@@ -180,4 +175,3 @@ init();
 </script>
 </body>
 </html>
-
