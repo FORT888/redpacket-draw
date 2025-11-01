@@ -22,6 +22,7 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
   border-radius:14px;padding:10px 14px;font-weight:800;margin:6px}
 .btn.ok{background:var(--ok);color:#062b1e}
 .btn.secondary{background:#1f2937;color:var(--text)}
+.btn.warn{background:var(--warn);color:#3b2900}
 .amount{font-size:56px;font-weight:900;letter-spacing:1px}
 .hint{font-size:12px;color:#94a3b8}
 </style>
@@ -36,6 +37,8 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
     <div id="statusInfo" class="hint">状态：进行中</div>
     <button class="btn ok" id="draw">抽红包</button>
     <button class="btn secondary" id="export">导出记录</button>
+    <button class="btn warn" id="reset">重置奖池（需密码）</button>
+
     <div style="margin-top:18px">
       <div class="hint">本次抽中结果</div>
       <div id="amountView" class="amount">—</div>
@@ -66,19 +69,20 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-/* ---------- 奖池设置 ---------- */
+/* ---------- 配置 ---------- */
 const CURRENCY = "元";
 const TOTAL_CASH = 3000;
 const CASH_COUNT = 20;
 const CASH_MIN = 38;
 const CASH_MAX = 388;
+const ADMIN_PASSWORD = "admin888"; // 修改为你自己的密码
 
 let pool = [];
 let history = [];
 let userDraws = {};
 let locked = false;
 
-/* ---------- 奖池初始化 ---------- */
+/* ---------- 奖池生成 ---------- */
 function randomCashPackets(total, count, min, max){
   let remain = total, result = [];
   for(let i=0;i<count-1;i++){
@@ -97,7 +101,7 @@ async function init(){
   const ref = db.collection("lottery").doc("roundOne");
   const snap = await ref.get();
   if(!snap.exists){
-    pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX).map(v=>`${v} ${CURRENCY}`)]);
+    pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX).map(v=>`${v}${CURRENCY}`)]);
     await ref.set({pool, history:[], userDraws:{}, locked:false});
   }
   ref.onSnapshot(doc=>{
@@ -134,6 +138,22 @@ async function drawOne(){
   render();
 }
 
+/* ---------- 重置功能 ---------- */
+async function resetLottery(){
+  const pwd = prompt("请输入管理员密码进行重置：");
+  if(pwd !== ADMIN_PASSWORD){alert("❌ 密码错误！");return;}
+  if(!confirm("确定要重置奖池并清空记录吗？"))return;
+
+  pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX).map(v=>`${v}${CURRENCY}`)]);
+  history = [];
+  userDraws = {};
+  locked = false;
+  await syncSave();
+
+  alert("✅ 奖池已重置成功！");
+  render();
+}
+
 /* ---------- 导出 ---------- */
 function exportCSV(){
   if(history.length===0){alert("暂无记录");return;}
@@ -155,7 +175,9 @@ function render(){
 /* ---------- 启动 ---------- */
 document.querySelector("#draw").addEventListener("click",drawOne);
 document.querySelector("#export").addEventListener("click",exportCSV);
+document.querySelector("#reset").addEventListener("click",resetLottery);
 init();
 </script>
 </body>
 </html>
+
