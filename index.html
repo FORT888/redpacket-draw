@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🎁 红包抽奖 🎁 🎁 祝您好运 🎁</title>
+<title>🎁 联信资 🎁 🎁 祝您好运 🎁</title>
 
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-firestore-compat.js"></script>
@@ -70,13 +70,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* ---------- 配置 ---------- */
-const ADMIN_PASSWORD = "happy888";
+const ADMIN_PASSWORD = "happy888"; // ✅ 正确密码
 const CURRENCY = "元";
 
 let pool = [];
 let history = [];
 let userDraws = {};
 let locked = false;
+let unsubscribe = null;
 
 /* ---------- 奖池固定金额 ---------- */
 function createFixedPool(){
@@ -92,6 +93,7 @@ function createFixedPool(){
 /* ---------- 工具 ---------- */
 function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 
+/* ---------- 初始化 ---------- */
 async function init(){
   const ref = db.collection("lottery").doc("roundOne");
   const snap = await ref.get();
@@ -99,7 +101,8 @@ async function init(){
     pool = createFixedPool();
     await ref.set({pool, history:[], userDraws:{}, locked:false});
   }
-  ref.onSnapshot(doc=>{
+  if (unsubscribe) unsubscribe(); // 移除旧监听
+  unsubscribe = ref.onSnapshot(doc=>{
     const d = doc.data();
     pool = d.pool || [];
     history = d.history || [];
@@ -136,16 +139,28 @@ async function drawOne(){
 /* ---------- 重置功能 ---------- */
 async function resetLottery(){
   const pwd = prompt("请输入管理员密码进行重置：");
-  if(pwd !== ADMIN_PASSWORD){alert("❌ 密码错误！");return;}
-  if(!confirm("确定要重置奖池并清空记录吗？"))return;
+  if(!pwd){return;}
+  if(pwd.trim() !== ADMIN_PASSWORD){
+    alert("❌ 密码错误！");
+    return;
+  }
+
+  if(!confirm("确定要重置奖池并清空记录吗？")) return;
+
+  // 停止监听防止异步冲突
+  if (unsubscribe) unsubscribe();
 
   pool = createFixedPool();
   history = [];
   userDraws = {};
   locked = false;
-  await syncSave();
+
+  await db.collection("lottery").doc("roundOne").set({
+    pool, history, userDraws, locked
+  });
 
   alert("✅ 奖池已重置成功！");
+  init(); // 重新监听
   render();
 }
 
