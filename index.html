@@ -83,12 +83,11 @@ function randomCashPackets(total, count, min, max){
   let remain = total, result = [];
   for(let i=0;i<count-1;i++){
     const maxPossible = Math.min(max, remain - min*(count - i - 1));
-    const money = Math.random()*(maxPossible - min) + min;
-    const v = Math.floor(money*100)/100;
-    result.push(v);
-    remain -= v;
+    const money = Math.floor(Math.random()*(maxPossible - min + 1)) + min;
+    result.push(money);
+    remain -= money;
   }
-  result.push(Number(remain.toFixed(2)));
+  result.push(remain);
   return result;
 }
 
@@ -98,7 +97,7 @@ async function init(){
   const ref = db.collection("lottery").doc("roundOne");
   const snap = await ref.get();
   if(!snap.exists){
-    pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX)]);
+    pool = shuffle(["🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁", ...randomCashPackets(TOTAL_CASH, CASH_COUNT, CASH_MIN, CASH_MAX).map(v=>`${v} ${CURRENCY}`)]);
     await ref.set({pool, history:[], userDraws:{}, locked:false});
   }
   ref.onSnapshot(doc=>{
