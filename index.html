@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🎁 联信资 🎁 🎁 祝您好运 🎁</title>
 
-<!-- Firebase CDN（compat 版便于直接 script 使用） -->
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.13.0/firebase-firestore-compat.js"></script>
 
@@ -22,8 +21,8 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
 .btn{cursor:pointer;border:1px solid #1f2937;color:#0b1222;background:var(--primary);
   border-radius:14px;padding:10px 14px;font-weight:800;margin:6px}
 .btn.ok{background:var(--ok);color:#062b1e}
-.btn.warn{background:var(--warn);color:#3b2900}
 .btn.secondary{background:#1f2937;color:var(--text)}
+.btn.warn{background:var(--warn);color:#3b2900}
 .amount{font-size:56px;font-weight:900;letter-spacing:1px}
 .hint{font-size:12px;color:#94a3b8}
 </style>
@@ -31,17 +30,17 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
 <body>
 <div class="wrap">
   <div class="title">🎁 联信资 🎁<br>🎁 祝您好运 🎁</div>
-  <div class="hint" id="userHint"></div>
+  <div class="hint">无需输入ID，每人限抽一次</div>
 
   <div class="card">
-    <div id="roundInfo">当前：—</div>
-    <div id="statusInfo" class="hint">状态：未开始</div>
+    <div id="roundInfo">奖池：特等奖 + 现金红包（共21份）</div>
+    <div id="statusInfo" class="hint">状态：进行中</div>
     <button class="btn ok" id="draw">抽红包</button>
-    <button class="btn ghost" id="export">导出记录</button>
-    <button class="btn secondary" id="reset">重置（需密码）</button>
-    <button class="btn warn" id="next">下一轮（需密码）</button>
+    <button class="btn secondary" id="export">导出记录</button>
+    <button class="btn warn" id="reset">重置奖池（需密码）</button>
+
     <div style="margin-top:18px">
-      <div class="hint">本次抽中金额</div>
+      <div class="hint">本次抽中结果</div>
       <div id="amountView" class="amount">—</div>
     </div>
     <div class="hint" id="leftInfo" style="margin-top:8px"></div>
@@ -50,7 +49,7 @@ html,body{margin:0;height:100%;background:linear-gradient(180deg,#0b1222,#0f172a
   <div class="card" style="text-align:left">
     <div class="hint">抽奖记录：</div>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
-      <thead><tr><th>ID</th><th>轮次</th><th>时间</th><th style="text-align:right">金额</th></tr></thead>
+      <thead><tr><th>编号</th><th>时间</th><th style="text-align:right">结果</th></tr></thead>
       <tbody id="logBody"></tbody>
     </table>
   </div>
@@ -70,135 +69,105 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-/* ---------- 配置（全部 USDT） ---------- */
-const RATE = 7.2; // 1 USDT = 7.2 CNY（仅用于把人民币总额换成 USDT）
-const ADMIN_PASSWORD = "happy888999";
-const PRESETS = [
-  { name: "第 1 轮", total: 500 / RATE,  count: 3,   min: 1.8 },
-  { name: "第 2 轮", total: 1000 / RATE, count: 70,  min: 1.8 },
-  { name: "第 3 轮", total: 1000 / RATE, count: 100, min: 1.8 }
-];
-const CURRENCY = "USDT";
+/* ---------- 配置 ---------- */
+const ADMIN_PASSWORD = "happy888"; // ✅ 正确密码
+const CURRENCY = "元";
 
-let roundIndex = 0, pool = [], history = [], userDraws = {}, roundLocked = false;
+let pool = [];
+let history = [];
+let userDraws = {};
+let locked = false;
+let unsubscribe = null;
 
-/* ---------- 绑定本地 ID（仅展示） ---------- */
-let userID = localStorage.getItem("lottery_user_id");
-if (!userID) {
-  userID = prompt("请输入您的6位数字ID（仅可设置一次）：");
-  if(!/^[0-9]{6}$/.test(userID)) {
-    alert("❌ ID格式错误，请刷新页面重新输入。");
-    location.reload();
-  } else {
-    localStorage.setItem("lottery_user_id", userID);
-    alert("✅ ID已绑定：" + userID);
-  }
+/* ---------- 奖池固定金额 ---------- */
+function createFixedPool(){
+  const list = [];
+  for(let i=0;i<5;i++) list.push("38" + CURRENCY);
+  for(let i=0;i<5;i++) list.push("88" + CURRENCY);
+  for(let i=0;i<5;i++) list.push("188" + CURRENCY);
+  for(let i=0;i<5;i++) list.push("288" + CURRENCY);
+  list.push("🎉 特等奖：OPPO K13 Turbo 5G 手机 🎁");
+  return shuffle(list);
 }
-document.getElementById("userHint").textContent = `您的ID：${userID}（不可修改）`;
 
-/* ---------- 初始化 & 实时监听 ---------- */
-async function syncLoad(){
-  const ref = db.collection("lottery").doc("roundState");
+/* ---------- 工具 ---------- */
+function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+
+/* ---------- 初始化 ---------- */
+async function init(){
+  const ref = db.collection("lottery").doc("roundOne");
   const snap = await ref.get();
-
   if(!snap.exists){
-    // 首次初始化：从第1轮开始
-    await ref.set({
-      roundIndex:0,
-      pool: shuffle(randomRedPackets(PRESETS[0].total, PRESETS[0].count, PRESETS[0].min)),
-      history:[],
-      userDraws:{},
-      roundLocked:false
-    });
+    pool = createFixedPool();
+    await ref.set({pool, history:[], userDraws:{}, locked:false});
   }
-
-  // 实时监听：任何人有操作，所有人自动刷新
-  ref.onSnapshot((doc)=>{
-    if(!doc.exists) return;
+  if (unsubscribe) unsubscribe(); // 移除旧监听
+  unsubscribe = ref.onSnapshot(doc=>{
     const d = doc.data();
-    roundIndex  = d.roundIndex;
-    pool        = d.pool || [];
-    history     = d.history || [];
-    userDraws   = d.userDraws || {};
-    roundLocked = !!d.roundLocked;
+    pool = d.pool || [];
+    history = d.history || [];
+    userDraws = d.userDraws || {};
+    locked = !!d.locked;
     render();
   });
 }
 
 async function syncSave(){
-  await db.collection("lottery").doc("roundState")
-    .set({roundIndex,pool,history,userDraws,roundLocked},{merge:true});
+  await db.collection("lottery").doc("roundOne").set({pool, history, userDraws, locked},{merge:true});
 }
 
-/* ---------- 红包生成 ---------- */
-function randomRedPackets(total, count, min){
-  const result=[];let remain=total;
-  for(let i=0;i<count-1;i++){
-    const max=(remain-min*(count-i-1))*2/(count-i);
-    const money=Math.random()*(Math.max(min,max)-min)+min;
-    const v=Math.floor(money*100)/100;result.push(v);remain-=v;
-  }
-  result.push(Number(remain.toFixed(2)));return result;
-}
-function shuffle(a){const arr=[...a];for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
-
-/* ---------- 抽奖（多人可抽，直到本轮 pool 为空） ---------- */
+/* ---------- 抽奖 ---------- */
 async function drawOne(){
-  if(roundLocked){alert("本轮已结束，请等待下一轮。");return;}
-  if(pool.length===0){alert("本轮红包已抽完！"); roundLocked=true; await syncSave(); return;}
+  if(locked){alert("抽奖已结束！");return;}
+  const uid = "user_" + Math.random().toString(36).slice(2,8);
+  if(userDraws[uid]){alert("您已抽过一次啦！");return;}
+  if(pool.length===0){alert("所有奖项已抽完！");locked=true;await syncSave();return;}
 
-  // 云端：同一ID每轮一次，总次数≤3
-  if(!userDraws[userID]) userDraws[userID]={count:0,locked:false,0:false,1:false,2:false};
-  if(userDraws[userID].locked || userDraws[userID].count>=3){ alert("您已达到本活动最多3次的抽奖上限。"); return; }
-  if(userDraws[userID][roundIndex]){ alert("您本轮已经抽过红包！"); return; }
-
-  const v=pool.shift();                        // 发放金额
-  userDraws[userID][roundIndex]=true;          // 标记本轮已抽
-  userDraws[userID].count+=1;                  // 总次数 +1
-  if(userDraws[userID].count>=3) userDraws[userID].locked=true;
-
-  const record={id:userID,round:PRESETS[roundIndex].name,t:new Date().toLocaleString(),v};
+  const prize = pool.shift();
+  userDraws[uid] = true;
+  const record = {id:uid, t:new Date().toLocaleString(), v:prize};
   history.unshift(record);
 
-  alert(`🎉 恭喜 ${userID} 获得 ${v.toFixed(2)} ${CURRENCY}，请联系助理领取！`);
-  document.querySelector("#amountView").textContent=`${v.toFixed(2)} ${CURRENCY}`;
+  alert(`🎉 恭喜！您获得：${prize}`);
+  document.querySelector("#amountView").textContent = prize;
 
-  // 抽空则自动结束本轮
-  if(pool.length===0){ roundLocked=true; }
-
+  if(pool.length===0){locked=true;}
   await syncSave();
   render();
 }
 
-/* ---------- 管理 ---------- */
-async function nextRound(){
-  const pwd=prompt("请输入管理员密码：");
-  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
-  if(roundIndex>=PRESETS.length-1){alert("已经是最后一轮！");return;}
-  roundIndex++;
-  const p=PRESETS[roundIndex];
-  pool=shuffle(randomRedPackets(p.total,p.count,p.min));
-  roundLocked=false;
-  await syncSave();
-  alert(`${p.name} 已开始！`);
-  render();
-}
+/* ---------- 重置功能 ---------- */
+async function resetLottery(){
+  const pwd = prompt("请输入管理员密码进行重置：");
+  if(!pwd){return;}
+  if(pwd.trim() !== ADMIN_PASSWORD){
+    alert("❌ 密码错误！");
+    return;
+  }
 
-async function resetAll(){
-  const pwd=prompt("请输入管理员密码以重置：");
-  if(pwd!==ADMIN_PASSWORD){alert("❌ 密码错误。");return;}
-  if(!confirm("确定要重置所有记录吗？"))return;
-  roundIndex=0;
-  pool=shuffle(randomRedPackets(PRESETS[0].total,PRESETS[0].count,PRESETS[0].min));
-  history=[]; userDraws={}; roundLocked=false;
-  await syncSave();
-  alert("✅ 已重置至第一轮。");render();
+  if(!confirm("确定要重置奖池并清空记录吗？")) return;
+
+  // 停止监听防止异步冲突
+  if (unsubscribe) unsubscribe();
+
+  pool = createFixedPool();
+  history = [];
+  userDraws = {};
+  locked = false;
+
+  await db.collection("lottery").doc("roundOne").set({
+    pool, history, userDraws, locked
+  });
+
+  alert("✅ 奖池已重置成功！");
+  init(); // 重新监听
+  render();
 }
 
 /* ---------- 导出 ---------- */
 function exportCSV(){
   if(history.length===0){alert("暂无记录");return;}
-  const rows=[["ID","轮次","时间","金额"],...history.map(h=>[h.id,h.round,h.t,`${h.v.toFixed(2)} ${CURRENCY}`])];
+  const rows=[["编号","时间","结果"],...history.map(h=>[h.id,h.t,h.v])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${Date.now()}.csv`;a.click();
@@ -206,22 +175,18 @@ function exportCSV(){
 
 /* ---------- 渲染 ---------- */
 function render(){
-  const p=PRESETS[roundIndex];
-  document.querySelector("#roundInfo").textContent=`当前：${p.name}`;
-  document.querySelector("#leftInfo").textContent=`剩余红包：${pool.length}`;
-  document.querySelector("#statusInfo").textContent=`状态：${roundLocked?"未开放":"进行中"}`;
+  document.querySelector("#leftInfo").textContent=`剩余奖项：${pool.length}`;
+  document.querySelector("#statusInfo").textContent=`状态：${locked?"已结束":"进行中"}`;
   document.querySelector("#logBody").innerHTML=history
-    .map(h=>`<tr><td>${h.id}</td><td>${h.round}</td><td>${h.t}</td><td style='text-align:right'>${h.v.toFixed(2)} ${CURRENCY}</td></tr>`)
+    .map(h=>`<tr><td>${h.id}</td><td>${h.t}</td><td style='text-align:right'>${h.v}</td></tr>`)
     .join("");
 }
 
 /* ---------- 启动 ---------- */
-function bind(el,fn){el.addEventListener("click",fn);el.addEventListener("touchstart",fn);}
-bind(document.querySelector("#draw"),drawOne);
-bind(document.querySelector("#next"),nextRound);
-bind(document.querySelector("#reset"),resetAll);
-bind(document.querySelector("#export"),exportCSV);
-syncLoad();
+document.querySelector("#draw").addEventListener("click",drawOne);
+document.querySelector("#export").addEventListener("click",exportCSV);
+document.querySelector("#reset").addEventListener("click",resetLottery);
+init();
 </script>
 </body>
 </html>
